@@ -58,6 +58,10 @@
 #include <proto/keymap.h>
 #include <proto/lowlevel.h>
 
+#include <cybergraphx/cybergraphics.h>
+#include <proto/cybergraphics.h>
+#include <inline/cybergraphics.h>
+
 #include "icon.c"
 
 #include "config.h"
@@ -143,6 +147,20 @@ struct ScreenBuffer *_hardwareScreenBuffer[2];
 byte _currentScreenBuffer;
 
 
+enum videoMode
+{
+    VideoModeAGA,
+    VideoModeEHB,
+    VideoModeRTG,
+    VideoModeINDIVISION
+};
+ 
+enum videoMode vidMode = VideoModeAGA;
+
+// RTG Stuff
+
+struct Library *CyberGfxBase = NULL;
+static APTR video_bitmap_handle = NULL;
 
 static UWORD emptypointer[] = {
   0x0000, 0x0000,    /* reserved, must be NULL */
@@ -458,6 +476,12 @@ void I_ShutdownGraphics(void)
         free(screenpixels);
         screenpixels = NULL;
     }   
+    
+    if (CyberGfxBase)
+    {
+        CloseLibrary(CyberGfxBase);
+        CyberGfxBase = NULL;
+    }    
 }
 
 //
@@ -476,10 +500,26 @@ void I_FinishUpdate (void)
     static int	lasttic;
     int		tics;
     int		i;    
+    UBYTE *base_address;    
  
-    c2p1x1_8_c5_bm_040(320,200,0,0,screenpixels,_hardwareScreenBuffer[_currentScreenBuffer]->sb_BitMap);
-    ChangeScreenBuffer(_hardwareScreen, _hardwareScreenBuffer[_currentScreenBuffer]); 
-    _currentScreenBuffer = _currentScreenBuffer ^ 1;	 
+    if (vidMode == VideoModeAGA)
+    {
+        c2p1x1_8_c5_bm_040(320,200,0,0,screenpixels,_hardwareScreenBuffer[_currentScreenBuffer]->sb_BitMap);
+        ChangeScreenBuffer(_hardwareScreen, _hardwareScreenBuffer[_currentScreenBuffer]); 
+        _currentScreenBuffer = _currentScreenBuffer ^ 1;	 
+    }
+    else
+    {
+        video_bitmap_handle = LockBitMapTags (_hardwareScreen->ViewPort.RasInfo->BitMap,
+                                              LBMI_BASEADDRESS, &base_address,
+                                              TAG_DONE);
+        if (video_bitmap_handle) {
+            CopyMemQuick (screenpixels, base_address, 320 * 200);
+            UnLockBitMap (video_bitmap_handle);
+            video_bitmap_handle = NULL;
+        }
+    }    
+    
 }
 
 void I_CheckIsScreensaver(void)
@@ -568,14 +608,12 @@ void I_InitGraphics(void)
         
         printf("I_InitGraphics: CPU : %d\n", cpu_type); 
         
-        if (cpu_type >= 68040)
-    	{
-    		mmu_chunky = mmu_mark(screenpixels,(320 * 200 + 4095) & (~0xFFF),CM_WRITETHROUGH,SysBase); 		   	    		     		
-    		mmu_active = 1;
-    		
-            printf("I_InitGraphics: MMU Active\n", cpu_type); 
-	    }
+      
+	    
+	    if (M_CheckParm ("-aga"))
+        {
                 
+        vidMode = VideoModeAGA;                    
         modeId = BestModeID(BIDTAG_NominalWidth, 320,
                             BIDTAG_NominalHeight, 200,
                 	        BIDTAG_DesiredWidth, 320,
@@ -583,6 +621,39 @@ void I_InitGraphics(void)
                 	        BIDTAG_Depth, 8,
                 	        BIDTAG_MonitorID, modeId,
                 	        TAG_END);
+                	        
+        }
+        
+        if (M_CheckParm ("-cgx") || M_CheckParm ("CGX"))
+        {
+
+            printf("RTG mode set \n");
+            vidMode = VideoModeRTG;    
+          
+            
+            CyberGfxBase = OpenLibrary ("cybergraphics.library", 0);
+        	if (CyberGfxBase == NULL) {
+		      I_Error("Cannot open cybergraphics.library");
+        	}            
+        	
+            if (CyberGfxBase != NULL)
+            {
+                modeId = BestCModeIDTags(CYBRBIDTG_NominalWidth, 320,
+                                         CYBRBIDTG_NominalHeight, 240,
+                                         CYBRBIDTG_Depth,8,
+                                         TAG_DONE);        	
+            }
+
+        }
+        
+        if (M_CheckParm ("-mmu") && cpu_type >= 68040 && vidMode != VideoModeRTG)
+    	{
+    		mmu_chunky = mmu_mark(screenpixels,(320 * 200 + 4095) & (~0xFFF),CM_WRITETHROUGH,SysBase);
+    		mmu_active = 1;
+
+            printf("I_InitGraphics: MMU Active\n", cpu_type);
+	    }        
+        
         
         if(modeId == INVALID_ID) {
           I_Error("Could not find a valid screen mode");

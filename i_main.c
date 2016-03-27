@@ -144,8 +144,23 @@ static void LockCPUAffinity(void)
 
 #endif
 
+#define MAXARGVS        100
+
+/* these command line arguments are flags */
+  static char *flags[] = {
+    "CGX",
+    "AGA",
+    "NTSC"
+  };
+  
 int main(int argc, char **argv)
 {
+    int i, p;
+    struct WBStartup *argmsg;
+    struct WBArg *wb_arg;
+    struct DiskObject *obj;
+    char **toolarray, *s;
+    
     // save arguments
 
     myargc = argc;
@@ -166,6 +181,45 @@ int main(int argc, char **argv)
     //LockCPUAffinity();
 
     M_FindResponseFile();
+ 
+         
+    /* parse icon tooltypes and convert them to argc/argv format */
+    
+    if (argc <= 1)
+    {
+        if (argc == 0) {
+            argmsg = (struct WBStartup *)argv;
+            wb_arg = argmsg->sm_ArgList;
+            if ((myargv[myargc] = malloc(strlen(wb_arg->wa_Name)+1)) == NULL)
+              I_Error ("malloc(%d) failed", strlen(wb_arg->wa_Name)+1);
+    
+            strcpy (myargv[myargc++], wb_arg->wa_Name);
+        }
+        if ((obj = GetDiskObject (myargv[0])) != NULL) {
+            toolarray = obj->do_ToolTypes;
+            for (i = 0; i < sizeof(flags)/sizeof(flags[0]); i++) {
+              if (FindToolType (toolarray, &flags[i][0]) != NULL) {
+                myargv[myargc++] = flags[i];
+              }
+            }
+    
+            FreeDiskObject (obj);
+        }
+    
+        if (argc != myargc) {
+            printf ("\nIcon tooltypes translated command line to:\n\n    ");
+            for (i = 0; i < myargc; i++)
+              printf (" %s", myargv[i]);
+            printf ("\n\n");
+        }
+    }
+    else
+    {
+        printf ("\Overriding Icon tooltypes command line with :\n\n    ");
+            for (i = 0; i < argc; i++)
+              printf (" %s", argv[i]);
+            printf ("\n\n");
+    }
 
     // start doom
     

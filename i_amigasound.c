@@ -11,6 +11,7 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/graphics.h>
+#include <proto/doomsnd.h>
 
 /* #include <math.h> */
 
@@ -27,6 +28,7 @@
 #include "sounds.h"
 
 #include "doomsound.h"
+ 
 // Any value of numChannels set
 // by the defaults code in M_misc is now clobbered by I_InitSound().
 // number of channels available for sound effects
